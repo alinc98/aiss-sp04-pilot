@@ -1,0 +1,47 @@
+# SP-04 CI. Runs only on pull requests. No deploy, no secrets.
+# Publishes which commit was ACTUALLY tested as commit statuses on the PR head SHA:
+#   aiss/tested-sha          -> explicit checkout of the head SHA (the V0 choice, FR-VER-06)
+#   aiss/tested-sha-default  -> default checkout (GitHub tests the temporary merge commit)
+name: ci
+on:
+  pull_request:
+permissions:
+  contents: read
+  statuses: write
+jobs:
+  test-head:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test
+        id: test
+        run: node --test
+      - name: Report tested SHA
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          OUTCOME: ${{ steps.test.outcome }}
+        run: |
+          TESTED=$(git rev-parse HEAD)
+          STATE=failure
+          [ "$OUTCOME" = "success" ] && [ "$TESTED" = "$HEAD_SHA" ] && STATE=success
+          gh api "repos/${{ github.repository }}/statuses/$HEAD_SHA" \
+            -f state="$STATE" -f context="aiss/tested-sha" \
+            -f description="tested=$TESTED base=$BASE_SHA" > /dev/null
+  test-default-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Report tested SHA (default checkout)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          TESTED=$(git rev-parse HEAD)
+          gh api "repos/${{ github.repository }}/statuses/$HEAD_SHA" \
+            -f state=success -f context="aiss/tested-sha-default" \
+            -f description="tested=$TESTED" > /dev/null

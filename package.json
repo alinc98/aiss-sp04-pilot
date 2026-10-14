@@ -1,0 +1,1 @@
+{ "name": "aiss-sp04-pilot", "private": true, "type": "module", "scripts": { "test": "node --test" } }
